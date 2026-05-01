@@ -2,11 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def theoretical_motion(t, dt, D):
-    n_timesteps = t/dt
+    n_timesteps = int(t/dt)
     sdev = np.sqrt(2*D*dt)
-    x_step = np.random.normal(0, sdev, int(n_timesteps))
+    x_step = np.random.normal(0, sdev, n_timesteps)
     x = np.cumsum(x_step)
-    y_step = np.random.normal(0, sdev, int(n_timesteps))
+    y_step = np.random.normal(0, sdev, n_timesteps)
     y = np.cumsum(y_step)
     return x, y
 
