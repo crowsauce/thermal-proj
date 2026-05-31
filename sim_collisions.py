@@ -1,11 +1,21 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import scipy
+
+m_s = 6.63 * 10**(-26) # Ar kg
+r_s = 1.88 * 10**(-10) # Ar m
+k = 1.380649 * 10**-23
+def m_big(a):
+    return 4/3 * np.pi * a**3 * 2500 # kg
+lj_e = 143.78 * k # Ar J
+lj_s = 3.3237 * 10**(-10) # Ar m
 
 class Particle:
-    def __init__(self, x, y, v_x, v_y, radius, m):
-        self.r = np.array((x, y))
-        self.v = np.array((v_x, v_y))
+    def __init__(self, x, y, z, v_x, v_y, v_z, a_x, a_y, a_z, radius, m):
+        self.r = np.array((x, y, z))
+        self.v = np.array((v_x, v_y, v_z))
+        self.a = np.array((a_x, a_y, a_z))
         self.radius = radius
         self.m = m
 
@@ -18,6 +28,10 @@ class Particle:
         """check the y component of position"""
         return self.r[1]
     @property
+    def z(self):
+        """check the z component of position"""
+        return self.r[2]
+    @property
     def v_x(self):
         """check the x component of velocity"""
         return self.v[0]
@@ -25,7 +39,22 @@ class Particle:
     def v_y(self):
         """check the y component of velocity"""
         return self.v[1]
-    
+    @property
+    def v_z(self):
+        """check the z component of velocity"""
+        return self.v[2]
+    @property
+    def a_x(self):
+        """check the x component of acceleration"""
+        return self.a[0]
+    @property
+    def a_y(self):
+        """check the y component of acceleration"""
+        return self.a[1]
+    @property
+    def a_z(self):
+        """check the z component of acceleration"""
+        return self.a[2]
     @x.setter
     def x(self, value):
         """set the x component of position"""
@@ -34,6 +63,10 @@ class Particle:
     def y(self, value):
         """set the y component of position"""
         self.r[1] = value
+    @z.setter
+    def z(self, value):
+        """set the z component of position"""
+        self.r[2] = value
     @v_x.setter
     def v_x(self, value):
         """set the x component of velocity"""
@@ -42,12 +75,27 @@ class Particle:
     def v_y(self, value):
         """set the y component of velocity"""
         self.v[1] = value
-
+    @v_z.setter
+    def v_z(self, value):
+        """set the z component of velocity"""
+        self.v[2] = value
+    @a_x.setter
+    def a_x(self, value):
+        """set the x component of acceleration"""
+        self.a[0] = value
+    @a_y.setter
+    def a_y(self, value):
+        """set the y component of acceleration"""
+        self.a[1] = value
+    @a_z.setter
+    def a_z(self, value):
+        """set the z component of acceleration"""
+        self.a[2] = value
     def overlaps(self, other):
         """check if overlapping"""
         return np.linalg.norm(self.r - other.r) < self.radius + other.radius
 
-def collide(p1, p2): # perfectly elastic
+def collide(p1, p2): # perfectly elastic, prollynot using ts!
     v1_final = p1.v - 2 * p2.m / (p1.m + p2.m) * np.dot(p1.v - p2.v, p1.r - p2.r) / np.linalg.norm(p1.r - p2.r)**2 * (p1.r - p2.r)
     v2_final = p2.v - 2 * p1.m / (p1.m + p2.m) * np.dot(p2.v - p1.v, p2.r - p1.r) / np.linalg.norm(p1.r - p2.r)**2 * (p2.r - p1.r)
     return v1_final, v2_final
@@ -65,19 +113,31 @@ def reflect_wall(p, box_size):
     if -p.y + p.radius > box_size:
         p.y = -box_size + p.radius
         p.v_y *= -1
+    if p.z + p.radius > box_size:
+        p.z = box_size - p.radius
+        p.v_z *= -1
+    if -p.z + p.radius > box_size:
+        p.z = -box_size + p.radius
+        p.v_z *= -1
 
-def initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass):
+def initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, T):
+    k = 1.380649 * 10**-23 #boltzmann
     particles = []
     for _ in range(n):
         x = np.random.uniform( -(box_size - small_radius), (box_size - small_radius)) # maybe do something to prevent overlaps with other particles
         y = np.random.uniform( -(box_size - small_radius), (box_size - small_radius))
-        v_x = np.random.normal(0, 1) # maxwell distribution later perchance
-        v_y = np.random.normal(0, 1) 
-        particles.append(Particle(x, y, v_x, v_y, small_radius, small_mass))
-    particles.append(Particle(0, 0, 0, 0, brownian_radius, brownian_mass))
+        z = np.random.uniform( -(box_size - small_radius), (box_size - small_radius))
+        v_x = scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/small_mass), size=1)[0]
+        v_y = scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/small_mass), size=1)[0]
+        v_z = scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/small_mass), size=1)[0]
+        a_x = 0
+        a_y = 0
+        a_z = 0
+        particles.append(Particle(x, y, z, v_x, v_y, v_z, a_x, a_y, a_z, small_radius, small_mass))
+    particles.append(Particle(0, 0, 0, 0, 0, 0, 0, 0, 0, brownian_radius, brownian_mass))
     return particles
 
-def step_sim(particles, dt, box_size):
+def step_sim_elastic(particles, dt, box_size):
     """go by one timestep"""
     for i, p1 in enumerate(particles):
         for j, p2 in enumerate(particles):
@@ -88,7 +148,27 @@ def step_sim(particles, dt, box_size):
         reflect_wall(p1, box_size)
         p1.r = p1.r + p1.v * dt    # will update p2 when it gets to j in the first loop i think
 
-def animate_sim(particles, dt, box_size, n_frames, interval=30):
+def lj(p1, p2):
+    r = np.linalg.norm(p1.r - p2.r)
+    if r < 5*lj_s and 0 < r: # cutoff distance
+        F = 24*lj_e/lj_s * (2*(lj_s/r)**13 - (lj_s/r)**7) * (p1.r - p2.r)/r
+    else:
+        F = np.array((0, 0, 0))
+    return F
+
+def step_sim_lj(particles, dt, box_size):
+    """go by one timestep"""
+    for p1 in particles:
+        p1.r = p1.r + p1.v * dt
+        p1.v = p1.v + p1.a * dt
+    for p1 in particles:
+        total_f = np.array((0, 0, 0))
+        for p2 in particles:
+            total_f = total_f + lj(p1, p2)
+        p1.a = total_f / p1.m
+        reflect_wall(p1, box_size)
+
+def animate_sim_2D(particles, dt, box_size, n_frames, interval=30):
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
     ax.set_xlim(-box_size, box_size)
@@ -103,14 +183,55 @@ def animate_sim(particles, dt, box_size, n_frames, interval=30):
             patch.center = (p.x, p.y)
         return patches
     def update(frame):
-        step_sim(particles, dt, box_size)
+        step_sim_lj(particles, dt, box_size)
         for patch, p in zip(patches, particles):
             patch.center = (p.x, p.y)
         return patches
     anim = animation.FuncAnimation(fig, update, frames=n_frames, init_func=init, interval=interval, blit=True,)
     return anim
 
-# test
-particles = initialize_particles(100, 10, 0.1, 0.1, 1.0, 1.0)
-anim = animate_sim(particles, dt=0.1, box_size=10, n_frames=200)
-plt.show()
+def animate_sim_3D(particles, dt, box_size, n_frames, interval=30):
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')    
+    ax.set_aspect("equal")
+    ax.set_xlim(-box_size, box_size)
+    ax.set_ylim(-box_size, box_size)
+    ax.set_zlim(-box_size, box_size)
+    u = np.linspace(0, 2 * np.pi, 30)
+    v = np.linspace(0, np.pi, 30)
+    def x_base(p):
+        return p.radius*np.outer(np.cos(u), np.sin(v))
+    def y_base(p):
+        return p.radius*np.outer(np.sin(u), np.sin(v))
+    def z_base(p):
+        return p.radius*np.outer(np.ones(np.size(u)), np.cos(v))
+    spheres = []
+    for p in particles:
+        x = x_base(p) + p.x
+        y = y_base(p) + p.y
+        z = z_base(p) + p.z
+        surf = ax.plot_surface(x, y, z)
+        spheres.append(surf)
+    def update(frame):
+        step_sim_elastic(particles, dt, box_size)
+        for sphere in spheres:
+            sphere.remove() # remove the old sphere
+            spheres.clear()
+            x = x_base(p) + p.x
+            y = y_base(p) + p.y
+            z = z_base(p) + p.z
+            surf = ax.plot_surface(x, y, z)
+    anim = animation.FuncAnimation(fig, update, frames=n_frames, interval=interval, blit=False)
+    return anim
+
+def test_anim():
+    particles = initialize_particles(100, 10**(-4), r_s, m_s, 10**(-6), m_big(10**(-6)), 10)
+    anim = animate_sim_2D(particles, dt=0.1, box_size=10**(-4), n_frames=200)
+    plt.show()
+
+def test_anim_notrealistic():
+    particles = initialize_particles(100, 10, 0.1, 10**(-20), 1, 10**(-15), 300)
+    anim = animate_sim_2D(particles, dt=0.1, box_size=10, n_frames=200)
+    plt.show()
+
+test_anim_notrealistic()
