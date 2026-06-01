@@ -179,9 +179,11 @@ def step_sim_lj(particles, dt, box_size):
         for p2 in particles[:-1]:
             total_f = total_f + lj(p1, p2)
         p1.a = total_f / p1.m
-    for p1 in particles:
+    for p1 in particles[:-1]: # elastic for brownian
         if p1.overlaps(particles[-1]):
-            collide(p1, particles[-1])
+            v1_final, v_brownian_final = collide(p1, particles[-1])
+            p1.v = v1_final
+            particles[-1].v = v_brownian_final
         reflect_wall(p1, box_size)
     
 

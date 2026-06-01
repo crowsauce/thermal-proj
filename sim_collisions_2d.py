@@ -112,12 +112,12 @@ def initialize_particles(n, box_size, small_radius, small_mass, brownian_radius,
         v_x, v_y = r[0], r[1]
         a_x = 0
         a_y = 0
-        a_z = 0
         particles.append(Particle(x, y, v_x, v_y, a_x, a_y, small_radius, small_mass))
     r_brownian = scipy.stats.uniform_direction.rvs(2)*scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/brownian_mass), size=1)[0]
     bv_x, bv_y = r_brownian[0], r_brownian[1]
-    particles.append(Particle(0, 0, bv_x, bv_y, 0, 0, brownian_radius, brownian_mass))
+    particles.append(Particle(0, 0, 0,0, 0, 0, brownian_radius, brownian_mass))
     return particles
+
 #in m
 def step_sim_elastic(particles, dt, box_size):
     """go by one timestep"""
@@ -135,7 +135,7 @@ def lj(p1, p2):
     if r < 5*lj_s and 0 < r: # cutoff distance
         F = 24*lj_e/lj_s * (2*(lj_s/r)**13 - (lj_s/r)**7) * (p1.r - p2.r)/r
     else:
-        F = np.array((0, 0, 0))
+        F = np.array((0, 0))
     return F
 
 def step_sim_lj(particles, dt, box_size):
@@ -144,13 +144,15 @@ def step_sim_lj(particles, dt, box_size):
         p1.r = p1.r + p1.v * dt
         p1.v = p1.v + p1.a * dt
     for p1 in particles[:-1]: # lj for fluid
-        total_f = np.array((0, 0, 0))
+        total_f = np.array((0, 0))
         for p2 in particles[:-1]:
             total_f = total_f + lj(p1, p2)
         p1.a = total_f / p1.m
-    for p1 in particles:
+    for p1 in particles[:-1]: # elastic for brownian
         if p1.overlaps(particles[-1]):
-            collide(p1, particles[-1])
+            v1_final, v_brownian_final = collide(p1, particles[-1])
+            p1.v = v1_final
+            particles[-1].v = v_brownian_final
         reflect_wall(p1, box_size)
     
 def run_sim(particles, dt, box_size, n_steps):
@@ -163,8 +165,7 @@ def run_sim(particles, dt, box_size, n_steps):
     x, y = brownian_positions_x, brownian_positions_y
     return x, y
 
-# prolly not using
-def animate_sim_2D(particles, dt, box_size, n_frames, interval=30):
+def animate_sim(particles, dt, box_size, n_frames, interval=30):
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
     ax.set_xlim(-box_size, box_size)
@@ -186,56 +187,24 @@ def animate_sim_2D(particles, dt, box_size, n_frames, interval=30):
     anim = animation.FuncAnimation(fig, update, frames=n_frames, init_func=init, interval=interval, blit=True,)
     return anim #looks like its overlapping bc its in 3d
 
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')    
-    ax.set_aspect("equal")
-    ax.set_xlim(-box_size, box_size)
-    ax.set_ylim(-box_size, box_size)
-    ax.set_zlim(-box_size, box_size)
-    u = np.linspace(0, 2 * np.pi, 30)
-    v = np.linspace(0, np.pi, 30)
-    def x_base(p):
-        return p.radius*np.outer(np.cos(u), np.sin(v))
-    def y_base(p):
-        return p.radius*np.outer(np.sin(u), np.sin(v))
-    def z_base(p):
-        return p.radius*np.outer(np.ones(np.size(u)), np.cos(v))
-    spheres = []
-    for p in particles:
-        x = x_base(p) + p.x
-        y = y_base(p) + p.y
-        z = z_base(p) + p.z
-        surf = ax.plot_surface(x, y, z)
-        spheres.append(surf)
-    def update(frame):
-        step_sim_lj(particles, dt, box_size)
-        for sphere in spheres:
-            sphere.remove() # remove the old sphere
-            spheres.clear()
-            x = x_base(p) + p.x
-            y = y_base(p) + p.y
-            z = z_base(p) + p.z
-            surf = ax.plot_surface(x, y, z)
-    anim = animation.FuncAnimation(fig, update, frames=n_frames, interval=interval, blit=False)
-    return anim
 
 def test_anim():
     particles = initialize_particles(100, 10**(-4), r_s, m_s, 10**(-6), m_big(10**(-6)), 10)
-    anim = animate_sim_2D(particles, dt=0.1, box_size=10**(-4), n_frames=200)
+    anim = animate_sim(particles, dt=0.1, box_size=10**(-4), n_frames=200)
     plt.show()
 
 def test_anim_notrealistic():
     particles = initialize_particles(100, 10, 0.1, 10**(-20), 1, 10**(-15), 300)
-    anim = animate_sim_2D(particles, dt=0.1, box_size=2, n_frames=200)
+    anim = animate_sim(particles, dt=0.1, box_size=10, n_frames=200)
     plt.show()
 
-#using
+#nm
 def lj_nm(p1, p2):
     r = np.linalg.norm(p1.r - p2.r)
     if r < 5*lj_s_nm and 0 < r: # cutoff distance
         F = 24*lj_e/lj_s_nm * (2*(lj_s_nm/r)**13 - (lj_s_nm/r)**7) * (p1.r - p2.r)/r
     else:
-        F = np.array((0, 0, 0))
+        F = np.array((0, 0))
     return F
 
 def step_sim_lj_nm(particles, dt, box_size):
@@ -244,7 +213,7 @@ def step_sim_lj_nm(particles, dt, box_size):
         p1.r = p1.r + p1.v * dt
         p1.v = p1.v + p1.a * dt
     for p1 in particles:
-        total_f = np.array((0, 0, 0))
+        total_f = np.array((0, 0))
         for p2 in particles:
             total_f = total_f + lj_nm(p1, p2)
         p1.a = total_f / p1.m
@@ -264,9 +233,17 @@ def plot_sim(x, y, box_size, dt, n_steps):
     fig = plt.figure()
     ax = fig.add_subplot()
     ax.plot(x, y)
-    ax.set_xlabel('X Position (nm)')
-    ax.set_ylabel('Y Position (nm)')
+    ax.set_xlabel('X Position')
+    ax.set_ylabel('Y Position')
     ax.grid()
     plt.title(f'Simulated Brownian Motion over {n_steps*dt} s')
     plt.show()
 
+# set variables
+n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, dt, n_steps = 1000, 10**(-6), 10**(-9), 10**(-20), 10**(-7), 10**(-16), 10**(-6), 100
+Temp = 300
+set_particles = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, Temp)
+x, y = run_sim(set_particles, dt, box_size, n_steps)
+plot_sim(x, y, box_size, dt, n_steps)
+
+#test_anim_notrealistic()
