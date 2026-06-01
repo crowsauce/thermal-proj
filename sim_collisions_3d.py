@@ -11,6 +11,18 @@ def m_big(a):
 lj_e = 143.78 * k # Ar J
 lj_s = 3.3237 * 10**(-10) # Ar m
 
+r_s_nm = 1.88 * 10**(-1) # Ar nm
+lj_s_nm = 3.3237 * 10**(-1) # Ar nm
+def m_big_nm(a):
+    return 4/3 * np.pi * a**3 * 2500 * 10**(-27) # kg from nm
+
+p_atm = 101325 # Pa
+def density(m_particle, T, atm_frac): # assumes ideal gas law
+    return atm_frac*p_atm * m_particle / (k * T)
+def n_given_rho_v(rho, box_size, m_particle):
+    return int(rho * (2*box_size)**3 / m_particle)
+
+
 class Particle:
     def __init__(self, x, y, z, v_x, v_y, v_z, a_x, a_y, a_z, radius, m):
         self.r = np.array((x, y, z))
@@ -127,16 +139,17 @@ def initialize_particles(n, box_size, small_radius, small_mass, brownian_radius,
         x = np.random.uniform( -(box_size - small_radius), (box_size - small_radius)) # maybe do something to prevent overlaps with other particles
         y = np.random.uniform( -(box_size - small_radius), (box_size - small_radius))
         z = np.random.uniform( -(box_size - small_radius), (box_size - small_radius))
-        v_x = scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/small_mass), size=1)[0]
-        v_y = scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/small_mass), size=1)[0]
-        v_z = scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/small_mass), size=1)[0]
+        r = scipy.stats.uniform_direction.rvs(3)*scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/small_mass), size=1)[0]
+        v_x, v_y, v_z = r[0], r[1], r[2]
         a_x = 0
         a_y = 0
         a_z = 0
         particles.append(Particle(x, y, z, v_x, v_y, v_z, a_x, a_y, a_z, small_radius, small_mass))
-    particles.append(Particle(0, 0, 0, 0, 0, 0, 0, 0, 0, brownian_radius, brownian_mass))
+    r_brownian = scipy.stats.uniform_direction.rvs(3)*scipy.stats.maxwell.rvs(scale=np.sqrt(k*T/brownian_mass), size=1)[0]
+    bv_x, bv_y, bv_z = r_brownian[0], r_brownian[1], r_brownian[2]
+    particles.append(Particle(0, 0, 0, bv_x, bv_y, bv_z, 0, 0, 0, brownian_radius, brownian_mass))
     return particles
-
+#in m
 def step_sim_elastic(particles, dt, box_size):
     """go by one timestep"""
     for i, p1 in enumerate(particles):
@@ -161,13 +174,30 @@ def step_sim_lj(particles, dt, box_size):
     for p1 in particles:
         p1.r = p1.r + p1.v * dt
         p1.v = p1.v + p1.a * dt
-    for p1 in particles:
+    for p1 in particles[:-1]: # lj for fluid
         total_f = np.array((0, 0, 0))
-        for p2 in particles:
+        for p2 in particles[:-1]:
             total_f = total_f + lj(p1, p2)
         p1.a = total_f / p1.m
+    for p1 in particles:
+        if p1.overlaps(particles[-1]):
+            collide(p1, particles[-1])
         reflect_wall(p1, box_size)
+    
 
+def run_sim(particles, dt, box_size, n_steps):
+    brownian_positions_x = []
+    brownian_positions_y = []
+    brownian_positions_z = []
+    for _ in range(n_steps):
+        step_sim_lj(particles, dt, box_size)
+        brownian_positions_x.append(particles[-1].x)
+        brownian_positions_y.append(particles[-1].y)
+        brownian_positions_z.append(particles[-1].z)
+    x, y, z = brownian_positions_x, brownian_positions_y, brownian_positions_z
+    return x, y, z
+
+# prolly not using
 def animate_sim_2D(particles, dt, box_size, n_frames, interval=30):
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
@@ -188,7 +218,7 @@ def animate_sim_2D(particles, dt, box_size, n_frames, interval=30):
             patch.center = (p.x, p.y)
         return patches
     anim = animation.FuncAnimation(fig, update, frames=n_frames, init_func=init, interval=interval, blit=True,)
-    return anim
+    return anim #looks like its overlapping bc its in 3d
 
 def animate_sim_3D(particles, dt, box_size, n_frames, interval=30):
     fig = plt.figure()
@@ -213,7 +243,7 @@ def animate_sim_3D(particles, dt, box_size, n_frames, interval=30):
         surf = ax.plot_surface(x, y, z)
         spheres.append(surf)
     def update(frame):
-        step_sim_elastic(particles, dt, box_size)
+        step_sim_lj(particles, dt, box_size)
         for sphere in spheres:
             sphere.remove() # remove the old sphere
             spheres.clear()
@@ -231,7 +261,56 @@ def test_anim():
 
 def test_anim_notrealistic():
     particles = initialize_particles(100, 10, 0.1, 10**(-20), 1, 10**(-15), 300)
-    anim = animate_sim_2D(particles, dt=0.1, box_size=10, n_frames=200)
+    anim = animate_sim_2D(particles, dt=0.1, box_size=2, n_frames=200)
     plt.show()
+
+#using
+def lj_nm(p1, p2):
+    r = np.linalg.norm(p1.r - p2.r)
+    if r < 5*lj_s_nm and 0 < r: # cutoff distance
+        F = 24*lj_e/lj_s_nm * (2*(lj_s_nm/r)**13 - (lj_s_nm/r)**7) * (p1.r - p2.r)/r
+    else:
+        F = np.array((0, 0, 0))
+    return F
+
+def step_sim_lj_nm(particles, dt, box_size):
+    """go by one timestep"""
+    for p1 in particles:
+        p1.r = p1.r + p1.v * dt
+        p1.v = p1.v + p1.a * dt
+    for p1 in particles:
+        total_f = np.array((0, 0, 0))
+        for p2 in particles:
+            total_f = total_f + lj_nm(p1, p2)
+        p1.a = total_f / p1.m
+        reflect_wall(p1, box_size)
+
+def run_sim_nm(particles, dt, box_size, n_steps):
+    brownian_positions_x = []
+    brownian_positions_y = []
+    brownian_positions_z = []
+    for _ in range(n_steps):
+        step_sim_lj_nm(particles, dt, box_size)
+        brownian_positions_x.append(particles[-1].x)
+        brownian_positions_y.append(particles[-1].y)
+        brownian_positions_z.append(particles[-1].z)
+    x, y, z = brownian_positions_x, brownian_positions_y, brownian_positions_z
+    return x, y, z
+
+def plot_sim(x, y, z, box_size, dt, n_steps):
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.plot3D(x, y, z)
+    ax.set_xlabel('X Position (nm)')
+    ax.set_ylabel('Y Position (nm)')
+    ax.set_zlabel('Z Position (nm)')
+    ax.grid()
+    plt.title(f'Simulated Brownian Motion over {n_steps*dt} s')
+    plt.show()
+
+N = n_given_rho_v(density(m_s, 300, 10**(-6)), 10**(3)*10**(-9), m_s)
+print(N)
+#x, y, z = run_sim_nm(initialize_particles(N, 10**(5), r_s_nm, m_s, 10**(2), m_big_nm(10**(2)), 300), dt=0.01, box_size=10**(5), n_steps=100)
+#plot_sim(x, y, z, box_size=10**(5), dt=0.01, n_steps=100)
 
 test_anim_notrealistic()
