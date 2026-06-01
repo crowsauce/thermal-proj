@@ -11,7 +11,7 @@ def theoretical_motion(t, dt, D):
     return x, y
 
 # sample for now
-t = 10
+t = 1
 dt = 10**(-2)
 k = 1.380649 * 10**-23 #boltzmann
 T = 100 #K

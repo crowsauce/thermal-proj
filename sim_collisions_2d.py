@@ -222,7 +222,7 @@ def step_sim_lj_nm(particles, dt, box_size):
 def run_sim_nm(particles, dt, box_size, n_steps):
     brownian_positions_x = []
     brownian_positions_y = []
-    for _ in range(n_steps):
+    for n in range(n_steps):
         step_sim_lj_nm(particles, dt, box_size)
         brownian_positions_x.append(particles[-1].x)
         brownian_positions_y.append(particles[-1].y)
@@ -236,14 +236,36 @@ def plot_sim(x, y, box_size, dt, n_steps):
     ax.set_xlabel('X Position')
     ax.set_ylabel('Y Position')
     ax.grid()
-    plt.title(f'Simulated Brownian Motion over {n_steps*dt} s')
+    plt.title(f'Simulated Brownian Motion over {n_steps*dt} s, dt = {dt}s, \n with box size = {2*box_size} m, particle number = {n}')
     plt.show()
-
+    
 # set variables
-n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, dt, n_steps = 1000, 10**(-6), 10**(-9), 10**(-20), 10**(-7), 10**(-16), 10**(-6), 100
-Temp = 300
-set_particles = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, Temp)
-x, y = run_sim(set_particles, dt, box_size, n_steps)
+n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, dt, n_steps = 100, 10**(-5), 10**(-8), 10**(-20), 10**(-6), 10**(-16), 10**(-7), 10**(3)
+
+set_particles_100 = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, 100)
+set_particles_300 = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, 300)
+set_particles_1000 = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, 1000)
+
+
+x, y = run_sim(set_particles_1000, dt, box_size, n_steps)
 plot_sim(x, y, box_size, dt, n_steps)
 
+
 #test_anim_notrealistic()
+
+def run_per_time(particles, dt, box_size, n_steps):
+    disp_div_time = []
+    for n in range(n_steps):
+        step_sim_lj(particles, dt, box_size)
+        disp_div_time.append(np.linalg.norm(particles[-1].r)/((n+1)*dt))
+    return np.array([np.mean(disp_div_time[-100:]), np.std(disp_div_time[-100:]), np.mean(disp_div_time), np.std(disp_div_time)])
+
+def data(particles, dt, box_size, n_steps):
+    data_set = np.empty((0, 4))
+    for _ in range(5):
+        data_set = np.vstack((data_set, run_per_time(particles, dt, box_size, n_steps)))
+    return data_set
+
+#data_set_100 = data(set_particles_300, dt, box_size, n_steps)
+#print(data_set_100)
+
