@@ -11,11 +11,10 @@ def theoretical_motion(t, dt, D):
     return x, y
 
 # sample for now
-t = 1
-dt = 10**(-2)
+t = 10**(-4)
+dt = 10**(-7)
 k = 1.380649 * 10**-23 #boltzmann
 T = 100 #K
-eta = 1 * 10**(-5) # can be computed later 
 a = 10**(-6) # of the big particle
 def eta(T):
     """argon using sutherland formula"""
@@ -28,8 +27,8 @@ x, y = theoretical_motion(t, dt, D(T, a))
 fig = plt.figure()
 ax = fig.add_subplot()
 ax.plot(x, y)
-ax.set_xlabel('X Position')
-ax.set_ylabel('Y Position')
+ax.set_xlabel('X Position (m)')
+ax.set_ylabel('Y Position (m)')
 ax.grid()
-plt.title(f'Theoretical Brownian Motion over {t}s, dt = {dt}s, \n with T = {T}K and a = {a:.2e} m')
+plt.title(f'Theoretical Brownian Motion over {t}s, dt = {dt}s, \n with T = {T}K and D = {D(T,a):.2e} m^2/s')
 plt.show()

@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import scipy
+import csv
 
 m_s = 6.63 * 10**(-26) # Ar kg
 r_s = 1.88 * 10**(-10) # Ar m
@@ -187,17 +188,6 @@ def animate_sim(particles, dt, box_size, n_frames, interval=30):
     anim = animation.FuncAnimation(fig, update, frames=n_frames, init_func=init, interval=interval, blit=True,)
     return anim #looks like its overlapping bc its in 3d
 
-
-def test_anim():
-    particles = initialize_particles(100, 10**(-4), r_s, m_s, 10**(-6), m_big(10**(-6)), 10)
-    anim = animate_sim(particles, dt=0.1, box_size=10**(-4), n_frames=200)
-    plt.show()
-
-def test_anim_notrealistic():
-    particles = initialize_particles(100, 10, 0.1, 10**(-20), 1, 10**(-15), 300)
-    anim = animate_sim(particles, dt=0.1, box_size=10, n_frames=200)
-    plt.show()
-
 #nm
 def lj_nm(p1, p2):
     r = np.linalg.norm(p1.r - p2.r)
@@ -212,11 +202,16 @@ def step_sim_lj_nm(particles, dt, box_size):
     for p1 in particles:
         p1.r = p1.r + p1.v * dt
         p1.v = p1.v + p1.a * dt
-    for p1 in particles:
+    for p1 in particles[:-1]:
         total_f = np.array((0, 0))
         for p2 in particles:
             total_f = total_f + lj_nm(p1, p2)
         p1.a = total_f / p1.m
+    for p1 in particles[:-1]: # elastic for brownian
+        if p1.overlaps(particles[-1]):
+            v1_final, v_brownian_final = collide(p1, particles[-1])
+            p1.v = v1_final
+            particles[-1].v = v_brownian_final
         reflect_wall(p1, box_size)
 
 def run_sim_nm(particles, dt, box_size, n_steps):
@@ -229,43 +224,43 @@ def run_sim_nm(particles, dt, box_size, n_steps):
     x, y = brownian_positions_x, brownian_positions_y
     return x, y
 
-def plot_sim(x, y, box_size, dt, n_steps):
+
+def plot_sim(x, y, box_size, dt, T):
     fig = plt.figure()
     ax = fig.add_subplot()
     ax.plot(x, y)
-    ax.set_xlabel('X Position')
-    ax.set_ylabel('Y Position')
+    ax.set_xlabel('X Position (m)')
+    ax.set_ylabel('Y Position (m)')
     ax.grid()
-    plt.title(f'Simulated Brownian Motion over {n_steps*dt} s, dt = {dt}s, \n with box size = {2*box_size} m, particle number = {n}')
+    plt.title(f'Simulated Brownian Motion at T = {T}K')
     plt.show()
-    
+
+
+m1, m2 = 10**(-20), 10**(-16)
+r1, r2, b = 10**(-8), 10**(-6), 10**(-5)
 # set variables
-n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, dt, n_steps = 100, 10**(-5), 10**(-8), 10**(-20), 10**(-6), 10**(-16), 10**(-7), 10**(3)
+n, dt, n_steps = 100, 10**(-7), 10**(3)
+box_size, small_radius, small_mass, brownian_radius, brownian_mass = b, r1, m1, r2, m2
 
-set_particles_100 = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, 100)
-set_particles_300 = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, 300)
-set_particles_1000 = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, 1000)
+set_particles = initialize_particles(n, box_size, small_radius, small_mass, brownian_radius, brownian_mass, 100)
 
+x, y = run_sim(set_particles, dt, box_size, n_steps)
+plot_sim(x, y, box_size, dt, 100)
 
-x, y = run_sim(set_particles_1000, dt, box_size, n_steps)
-plot_sim(x, y, box_size, dt, n_steps)
-
-
-#test_anim_notrealistic()
-
-def run_per_time(particles, dt, box_size, n_steps):
+def run_per_time(particles, dt, box_size, n_steps, N, T):
     disp_div_time = []
     for n in range(n_steps):
         step_sim_lj(particles, dt, box_size)
         disp_div_time.append(np.linalg.norm(particles[-1].r)/((n+1)*dt))
-    return np.array([np.mean(disp_div_time[-100:]), np.std(disp_div_time[-100:]), np.mean(disp_div_time), np.std(disp_div_time)])
+    with open(f'{T}K,{N}.csv', 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        for item in disp_div_time:
+            writer.writerow([item])
+    return disp_div_time
 
-def data(particles, dt, box_size, n_steps):
+def data(particles, dt, box_size, n_steps, N, T): #not using?
     data_set = np.empty((0, 4))
     for _ in range(5):
-        data_set = np.vstack((data_set, run_per_time(particles, dt, box_size, n_steps)))
+        data_set = np.vstack((data_set, run_per_time(particles, dt, box_size, n_steps, N, T)))
     return data_set
-
-#data_set_100 = data(set_particles_300, dt, box_size, n_steps)
-#print(data_set_100)
 
